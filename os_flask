@@ -1,0 +1,506 @@
+import csv
+import re
+import pandas as pd
+import pytz
+import os
+import openpyxl
+from dateutil import parser
+from openpyxl import load_workbook
+from datetime import datetime, timedelta
+import numpy
+# from datetime import datetime, timedelta
+from flask import Flask, request, render_template
+
+app = Flask(__name__)
+
+@app.route('/', methods=['POST'])
+def home():
+    # Check if a file was uploaded
+    file = request.files['file']
+    if 'file' not in request.files:
+        return 'No file was uploaded.'
+
+    # Check if the file data is empty
+    if file.filename == '':
+        return 'No file was uploaded.'
+
+    # Read the contents of the file
+    contents = file.read()
+    csv_reader = csv.reader(contents.decode('utf-8').splitlines())
+        # Close the file
+        # csv_file.close()
+    downloads_folder = os.path.join(os.path.expanduser('~'), 'Downloads')
+        # Create a new file in the downloads folder
+    with open(os.path.join(downloads_folder, 'output.csv'), 'w') as csv_file:
+    # Create a csv.writer object
+        writer = csv.writer(csv_file)
+            # Write the new headers to the file
+            writer.writerow(['title', 'category', 'start', 'end', 'organizer', 'response', 'attendees', 'recurring', 'recurrence', 'recurrence end'])
+            # Write the contents of the file (excluding the original header) to the file
+            writer.writerows(contents[1:])
+
+        # Clean data
+        for row in contents:
+            # Remove all commas
+            row = [x.strip(',') for x in row]
+
+        for row in contents:
+            # Replace any instances of 2 quotations with one quotation
+            row = [x.replace('""', '"') for x in row]
+
+        for row in contents: 
+            # Replace quotations with commas
+            row = [x.replace('"', ',') for x in row]
+
+        for row in contents:
+            # Replace double commas with single comma
+            row = [x.replace(',,', ',') for x in row]
+
+        for i, row in enumerate(contents):
+            # Split the row by comma
+            contents[i] = row[0].split(',')
+
+
+        with open(os.path.join(downloads_folder, 'output.csv'), 'w') as csv_file:
+            # Create a csv.writer object
+            writer = csv.writer(csv_file)
+
+            # Write the modified contents of the file to the file
+            writer.writerows(contents)
+
+        # Close the file
+        csv_file.close()
+        
+                # Open the CSV file in read mode
+        with open(os.path.join(downloads_folder, 'output.csv'), 'w') as csv_file:
+            # Create a csv.reader object
+            reader = csv.reader(csv_file)
+            # Read the contents of the file
+            contents = list(reader)
+
+        # Close the file
+        csv_file.close()
+
+        # Iterate over the rows in the file
+        for i, row in enumerate(contents):
+            # Remove all leading and trailing quotation marks
+            contents[i] = [x.strip('"') for x in row]
+
+        # Open the CSV file in write mode
+        with open(os.path.join(downloads_folder, 'output.csv'), 'w') as csv_file:
+            # Create a csv.writer object
+            writer = csv.writer(csv_file)
+            # Write the modified contents of the file to the file
+            writer.writerows(contents)
+
+        # Close the file
+        csv_file.close()
+
+        # Open the input CSV file in read mode
+        with open(os.path.join(downloads_folder, 'output.csv'), 'w') as csv_file:
+            # Create a csv.reader object
+            reader = csv.reader(csv_file)
+            # Read the contents of the file
+            contents = list(reader)
+
+        # Create a list to store the rows that need to be moved to the new file
+        headers = contents[0]
+
+        # Close the file
+        csv_file.close()
+
+        # grab all rows without yes or no in recurring column, have any letter in attendees column, or doesnt start with 2 in recurrence end column
+        contents2 = [row for row in contents if (row[7] not in ['yes', 'no'] or any(c.isalpha() for c in row[6])) or not row[9].startswith("2")]
+
+        # Open the output CSV file in write mode
+        with open(os.path.join(downloads_folder, 'corrupt_data.csv'), 'w') as csv_file:
+            # Create a csv.writer object
+            writer = csv.writer(csv_file)
+            # Write the headers to the file
+        #     writer.writerow(headers)
+            # Write the rows from the contents2 list
+            writer.writerows(contents2)
+
+        # Close the file
+        csv_file.close()
+
+        # Open the output CSV file in write mode
+        with open(os.path.join(downloads_folder, 'output.csv'), 'w') as csv_file:
+            # Create a csv.writer object
+            writer = csv.writer(csv_file)
+            # Write the headers to the file
+            writer.writerow(headers)
+            # Write the rows from the contents list that are not in the contents2 list to the file
+            writer.writerows([row for row in contents if row not in contents2])
+
+        # Close the file
+        csv_file.close()
+    
+        # Remove rows with only one attendee (likely time block or WP event) or non recurring meetings
+
+        # Open the corrupt_data CSV file in read mode
+        with open(os.path.join(downloads_folder, 'corrupt_data.csv'), 'w') as csv_file:
+            # Create a csv.reader object
+            reader = csv.reader(csv_file)
+            # Read the contents of the file
+            contents = list(reader)
+
+        # Create a list to store the modified rows
+        modified_rows = []
+
+        # Iterate over the rows in the contents
+        for row in contents:
+            # Check if the value in the "recurring" column is "no" or the value in the "attendees" column is 1
+            if row[7] == "no" or row[6] == "1":
+                # Skip this row and move on to the next one
+                continue
+            # Add the modified row to the list
+            modified_rows.append(row)
+
+        # Open the corrupt_data CSV file in write mode
+        with open(os.path.join(downloads_folder, 'corrupt_data.csv'), 'w') as csv_file:
+            # Create a csv.writer object
+            writer = csv.writer(csv_file)
+            # Write the modified rows to the file
+            writer.writerows(modified_rows)
+
+        # Close the file
+        csv_file.close()
+
+        # Open the output CSV file in read mode
+        with open(os.path.join(downloads_folder, 'output.csv'), 'w') as csv_file:
+            # Create a csv.reader object
+            reader = csv.reader(csv_file)
+            # Read the contents of the file
+            contents = list(reader)
+
+        # Get the headers from the contents
+        headers = contents[0]
+        from datetime import datetime
+        # Create a new list to store the modified rows
+        modified_rows = []
+
+        # Iterate over the rows in the contents
+        for row in contents:
+            # Check if the value in the "recurring" column is "no" or the value in the "attendees" column is 1
+            if row[7] == "no" or row[6] == "1":
+                # Skip this row and move on to the next one
+                continue
+            # Add the modified row to the list
+            modified_rows.append(row)
+
+        # Open the output CSV file in write mode
+        with open(os.path.join(downloads_folder, 'output.csv'), 'w') as csv_file:
+            # Create a csv.writer object
+            writer = csv.writer(csv_file)
+
+            # Write the modified rows to the file
+            writer.writerows(modified_rows)
+
+        # Close the file
+        csv_file.close()
+        
+        # calculate time length of meetings
+
+        # Open the input CSV file in read mode
+        with open(os.path.join(downloads_folder, 'output.csv'), 'w') as csv_file:
+            # Create a csv.reader object
+            reader = csv.reader(csv_file)
+            # Read the contents of the file
+            contents = list(reader)
+                
+        # Get the headers from the contents
+        headers = contents[0]
+
+        # Add the new "Time Duration" column to the headers
+        headers.append("Time (in minutes)")
+
+        # Create a list to store the modified rows
+        modified_rows = []
+
+        # Iterate over the rows in the contents
+        for row in contents:
+            # Check if the current row is the header row
+            if row[0] == "title":
+                # Skip this row and move on to the next one
+                continue
+            # Parse the start and end date and time strings
+            start_time = datetime.strptime(row[2], '%Y-%m-%dT%H:%M:%S%z')
+            end_time = datetime.strptime(row[3], '%Y-%m-%dT%H:%M:%S%z')
+            # Calculate the difference between the start and end times
+            time_difference = end_time - start_time
+            # Convert the time difference to minutes
+            minutes = int(time_difference.total_seconds() / 60)
+            # Add the time difference to the row
+            row.append(minutes)
+            # Add the modified row to the list
+            modified_rows.append(row)
+
+        # Open the output CSV file in write mode
+        with open(os.path.join(downloads_folder, 'output.csv'), 'w') as csv_file:
+            # Create a csv.writer object
+            writer = csv.writer(csv_file)
+            # Write the headers to the file
+            writer.writerow(headers)
+            # Write the modified rows to the file
+            writer.writerows(modified_rows)
+
+        # Close the file
+        csv_file.close()
+        
+        # -----------------------------------------------------------------------------------------------
+        
+        # Open the input CSV file in read mode
+        with open(os.path.join(downloads_folder, 'output.csv'), 'w') as csv_file:
+            # Create a csv.reader object
+            reader = csv.reader(csv_file)
+            # Read the contents of the file
+            contents = list(reader)
+
+        # Get the headers from the contents
+        headers = contents[0]    
+        # Add the new header to the list of headers
+        headers.append("Meeting expires within 30 days")
+        # Create a list to store the modified rows
+        modified_rows = []
+        pacific = pytz.timezone('US/Pacific')
+        now = datetime.now(pacific)
+
+        # Iterate over the rows in the contents
+        for row in contents:
+            # Check if the current row is the header row
+            if row[0] == "title":
+                # Skip this row and move on to the next one
+                continue
+
+            # Parse the "recurrence end" date and time string
+            recurrence_end = datetime.strptime(row[9], '%Y-%m-%dT%H:%M:%S%z')
+#             recurrence_end = recurrence_end.astimezone(pytz.pacific).replace(tzinfo=None)
+            # Check if the "recurrence end" date is within 30 days of the current date
+            if recurrence_end > now and recurrence_end < now + timedelta(days=30):
+                # Set the value of the new column to "yes"
+                row.append("yes")
+            else:
+                # Set the value of the new column to "no"
+                row.append("no")
+
+                # Iterate over the rows in the contents
+        for row in contents:
+                    # Check if the current row is the header row
+            if row[0] == "title":
+                        # Skip this row and move on to the next one
+                continue
+            
+            # Parse the "recurrence end" date and time string
+            recurrence_end = datetime.strptime(row[9], '%Y-%m-%dT%H:%M:%S%z')
+            # Convert the "recurrence end" date and time to the "full date/time pattern (short time)" format
+            formatted_recurrence_end = recurrence_end.strftime("%a, %b %d, %Y %I:%M %p")
+            # Replace the original "recurrence end" value with the formatted value
+            row[9] = formatted_recurrence_end
+            # Add the modified row to the list
+            modified_rows.append(row)
+
+        # Open the output CSV file in write mode
+        with open(os.path.join(downloads_folder, 'output.csv'), 'w') as csv_file:
+            # Create a csv.writer object
+            writer = csv.writer(csv_file)
+            # write headers
+            writer.writerow(headers)
+            # Write the modified rows to the file
+            writer.writerows(modified_rows)
+
+        # Close the file
+        csv_file.close()
+        
+        # -------------------------------------------------------------------------------------------
+        
+        # Drop start and end columns from output file
+
+        # Open the input CSV file in read mode
+        with open(os.path.join(downloads_folder, 'output.csv'), 'w') as csv_file:
+            # Create a csv.reader object
+            reader = csv.reader(csv_file)
+            # Read the contents of the file
+            contents = list(reader)
+
+        # Create a list to store the rows that need to be moved to the new file
+        headers = contents[0]
+
+        # Create a new list to store the modified rows
+        modified_rows = []
+
+        # Iterate over the rows in the contents
+        for row in contents:
+            # Drop the "start" and "end" columns from the row
+            row.pop(2)
+            row.pop(2)
+            # Add the modified row to the list
+            modified_rows.append(row)
+
+        # Open the output CSV file in write mode
+        with open(os.path.join(downloads_folder, 'output.csv'), 'w') as csv_file:
+            # Create a csv.writer object
+            writer = csv.writer(csv_file)
+            # Write the modified headers to the file
+        #     writer.writerow(headers)
+            # Write the modified rows to the file
+            writer.writerows(modified_rows)
+
+        # Close the file
+        csv_file.close()
+        
+        # -----------------------------------------------------------------------------------------------
+        
+                # Read the CSV file into a Pandas DataFrame
+        df = pd.read_csv('output.csv')
+
+        # Remove all duplicate rows from the DataFrame
+        df = df.drop_duplicates()
+
+        # Write the modified DataFrame back to the CSV file
+        df.to_csv('output.csv', index=False)
+        
+                # Read in the CSV file using pandas
+        df = pd.read_csv('output.csv')
+
+        # Write the DataFrame to an Excel file
+        # df.to_excel(os.path.join(downloads_folder, 'cal_audit_tool.xlsx'), sheet_name = 'recurring_meetings', index=False)
+        
+        # Read in the Excel file using pandas
+        df = pd.read_excel(os.path.join(downloads_folder, 'cal_audit_tool.xlsx'), sheet_name='recurring_meetings')
+
+        # Identify 1:1's from data sheet
+        mask = df['attendees'] == 2
+
+        # Create a new DataFrame with the rows that match the mask
+        df2 = df[mask]
+
+        # Create an ExcelWriter object that writes to the downloads folder
+        writer = pd.ExcelWriter(os.path.join(downloads_folder, 'cal_audit_tool.xlsx'), engine='xlsxwriter')
+
+        # Write the dataframes to the Excel file
+        df.to_excel(writer, sheet_name='recurring_meetings', index=False)
+        df2.to_excel(writer, sheet_name='1_on_1s', index=False)
+        writer.close()
+        
+    
+
+        df_not1on1s = df[~mask]
+        df2 = df[mask]
+
+
+        writer = pd.ExcelWriter(os.path.join(downloads_folder, 'cal_audit_tool.xlsx'), engine='xlsxwriter')
+        df_not1on1s.to_excel(writer, sheet_name = 'recurring_meetings', index=False)
+        df2.to_excel(writer, sheet_name = '1_on_1s', index=False)
+        writer.close()
+        
+                # copy meetings you or your leader owns to a new sheet
+        df = pd.read_excel(os.path.join(downloads_folder, 'cal_audit_tool.xlsx'), sheet_name='recurring_meetings')
+        df = pd.read_excel(os.path.join(downloads_folder, 'cal_audit_tool.xlsx'), sheet_name='1_on_1s')
+
+        # Identify meetings in both dataframes where you/your leader is the organizer
+        mask = df['response'] == 'ORGANIZER'
+        df_my_mtgs_recurring = df[mask]
+        mask = df_1on1['response'] == 'ORGANIZER'
+        df_my_mtgs_1on1 = df_1on1[mask]
+
+        # Concatenate the rows from both dataframes into a single dataframe
+        df_my_mtgs = pd.concat([df_my_mtgs_recurring, df_my_mtgs_1on1])
+
+
+        # reset index in each sheet
+        df.reset_index(drop=True, inplace=True)
+        df_1on1.reset_index(drop=True, inplace=True)
+
+
+        writer = pd.ExcelWriter(os.path.join(downloads_folder, 'cal_audit_tool.xlsx'), engine='xlsxwriter')
+        df.to_excel(writer, sheet_name = 'recurring_meetings', index=False)
+        df_1on1.to_excel(writer, sheet_name = '1_on_1s', index=False)
+        df_my_mtgs.to_excel(writer, sheet_name = 'Meetings I Own', index=False)
+
+        writer.close()
+        
+                # Open the Excel workbook
+        wb = openpyxl.load_workbook(os.path.join(downloads_folder, 'cal_audit_tool.xlsx'))
+
+        # Iterate over the sheets in the workbook
+        for sheet in wb.worksheets:
+            # Iterate over the cells in the "recurrence" column
+            for row in sheet.iter_cols(min_col=7, max_col=7):
+                for cell in row:
+                    # If the cell value contains a question mark, replace it with a -
+                    if '?' in cell.value:
+                        cell.value = cell.value.replace('?', '-')
+
+        # Save the workbook
+        wb.save(os.path.join(downloads_folder, 'cal_audit_tool.xlsx'))
+        
+        # Open the workbook
+        wb = openpyxl.load_workbook(os.path.join(downloads_folder, 'cal_audit_tool.xlsx'))
+
+        # Sort rows based on meeting cadence + add headers for each cadence
+
+        times = []
+
+        # Iterate over the sheets in the workbook
+        for sheet in wb.worksheets:
+            # Create a list of rows to be sorted
+            rows = list(sheet.iter_rows(min_row=2))
+
+            # Define a custom key function for sorting the rows
+            def sort_key(row):
+                recurrence_cell = row[6]
+                recurrence_value = recurrence_cell.value
+                if recurrence_value.startswith("Every week"):
+                    return 1
+                elif recurrence_value.startswith("Every 2 weeks"):
+                    return 2
+                elif recurrence_value.startswith("Every 3 weeks"):
+                    return 3
+                elif recurrence_value.startswith("Every 4 weeks"):
+                    return 4
+                elif recurrence_value.startswith("Every month"):
+                    return 5
+                elif recurrence_value.startswith("Every 2 months"):
+                    return 6
+                elif recurrence_value.startswith("Every 3 months"):
+                    return 7
+                else:
+                    return 8
+
+            # Sort the rows using the custom key function
+            sorted_rows = sorted(rows, key=sort_key)
+
+            # Clear the sheet
+            sheet.delete_rows(2, sheet.max_row)
+
+            # Create a list to store the rows to be written to the sheet
+            sheet_rows = []
+
+            # Write the sorted rows back to the sheet
+            for row in sorted_rows:
+                sheet.append(row)
+
+        # Save the workbook
+        wb.save(os.path.join(downloads_folder, 'cal_audit_tool.xlsx'))
+        
+        # Delete recurring column
+
+        # Open the Excel workbook
+        wb = openpyxl.load_workbook(os.path.join(downloads_folder, 'cal_audit_tool.xlsx'))
+
+        for sheet in wb.worksheets:
+            sheet.delete_cols(6)
+
+        # Save the workbook
+        wb.save(os.path.join(downloads_folder, 'cal_audit_tool.xlsx'))
+        
+        
+        # ------------------------------------------------------------------------------------------
+
+
+        return 'Success'
+    return render_template('home.html')
+
+if __name__ == '__main__':
+    app.run()
