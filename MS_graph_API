@@ -1,0 +1,63 @@
+import openpyxl
+import requests
+from datetime import datetime, timedelta
+
+# Set up API endpoint and headers
+url = "https://graph.microsoft.com/v1.0/me/calendar/events"
+headers = {"Authorization": "Bearer <your_access_token_here>"}
+
+# Retrieve all meetings from calendar
+response = requests.get(url, headers=headers, params={"$select": "subject,organizer,start,end,attendees,recurrence"})
+meetings = response.json()["value"]
+
+# Sort meetings into categories
+one_on_one = []
+recurring_two_attendees = []
+recurring_more_attendees = []
+meetings_i_own = []
+one_off = []
+
+for meeting in meetings:
+    if len(meeting["attendees"]) == 2 and "recurrence" in meeting:
+        recurring_two_attendees.append(meeting)
+    elif len(meeting["attendees"]) > 2 and "recurrence" in meeting:
+        recurring_more_attendees.append(meeting)
+    elif meeting["organizer"]["emailAddress"]["address"] == "<your_email_address_here>":
+        meetings_i_own.append(meeting)
+    elif "recurrence" in meeting:
+        one_off.append(meeting)
+
+# Create Excel workbook and sheets
+wb = openpyxl.Workbook()
+wb.create_sheet(title="1 on 1 meetings")
+wb.create_sheet(title="Recurring meetings with >2 attendees")
+wb.create_sheet(title="Meetings I own")
+wb.create_sheet(title="One-off meetings")
+wb.create_sheet(title="Time spent in recurring meetings")
+
+# Write meeting data to each sheet
+for i, category in enumerate([one_on_one, recurring_two_attendees, recurring_more_attendees, meetings_i_own, one_off]):
+    sheet = wb.worksheets[i]
+    sheet.append(["Subject", "Start Time", "End Time", "Attendees"])
+    for meeting in category:
+        start_time = datetime.fromisoformat(meeting["start"]["dateTime"])
+        end_time = datetime.fromisoformat(meeting["end"]["dateTime"])
+        attendees = ";".join([a["emailAddress"]["name"] for a in meeting["attendees"]])
+        sheet.append([meeting["subject"], start_time, end_time, attendees])
+
+# Calculate time spent in recurring meetings
+time_sheet = wb["Time spent in recurring meetings"]
+time_sheet.append(["Frequency", "Time per week", "Time per month", "Time per quarter", "Time per half year"])
+
+for freq, freq_text in [("daily", "Daily"), ("weekly", "Weekly"), ("absoluteMonthly", "Monthly"), ("absoluteYearly", "Yearly")]:
+    recurring_freq = [m for m in recurring_more_attendees if m["recurrence"]["pattern"]["type"] == freq]
+    if len(recurring_freq) == 0:
+        continue
+    time_per_week = sum([((datetime.fromisoformat(m["end"]["dateTime"]) - datetime.fromisoformat(m["start"]["dateTime"])).total_seconds() / 3600) for m in recurring_freq]) / len(recurring_freq)
+    time_per_month = time_per_week * 4
+    time_per_quarter = time_per_month * 3
+    time_per_half_year = time_per_month * 6
+    time_sheet.append([freq_text, time_per_week, time_per_month, time_per_quarter, time_per_half_year])
+
+# Save the Excel workbook
+wb.save("outlook_calendar.xlsx")
